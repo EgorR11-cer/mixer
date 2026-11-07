@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Mixer" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/mx_bg</item>
+        <item name="android:statusBarColor">@color/mx_bg</item>
+        <item name="android:navigationBarColor">@color/mx_bg</item>
+    </style>
+</resources>
