@@ -27,7 +27,8 @@ define('MX_FILE', MX_DIR . '/mixer.json');
 define('MX_ICONS', MX_DIR . '/mixer_icons.json');
 define('MX_TOKENS', MX_DIR . '/mixer_tokens.json');
 define('MX_PAIR', MX_DIR . '/mixer_pair.json');
-const MX_DEF = ['apps' => [], 'ts' => 0, 'cmds' => [], 'presets' => [], 'icon_names' => []];
+const MX_DEF = ['apps' => [], 'ts' => 0, 'cmds' => [], 'presets' => [], 'icon_names' => [], 'autos' => []];
+const MX_AUTO_COOLDOWN = 60;   // не чаще раза в минуту на одно правило
 const MX_MAX_DEVICES = 10;
 const MX_PAIR_TTL = 300;
 @set_time_limit(25);
@@ -96,6 +97,31 @@ function mx_push(array &$s, string $name, string $kind, $value): void {
     unset($app);
     if (count($s['cmds']) > 300) $s['cmds'] = array_slice($s['cmds'], -300);
 }
+// Применить пресет: поставить команды громкости/mute для всех приложений из пресета
+function mx_apply_preset(array &$s, string $name): bool {
+    if (!isset($s['presets'][$name]) || !is_array($s['presets'][$name])) return false;
+    foreach ($s['presets'][$name] as $n => $lv) {
+        mx_push($s, (string)$n, 'volume', (int)($lv['volume'] ?? 0));
+        mx_push($s, (string)$n, 'muted', !empty($lv['muted']));
+    }
+    return true;
+}
+// Автопресеты: если приложение из правила только что появилось в списке — применяем его пресет
+function mx_run_autos(array &$s, array $prevNames, array $apps): void {
+    if (!$s['autos']) return;
+    $prev = array_flip(array_map('mb_strtolower', $prevNames));
+    $now = time();
+    foreach ($s['autos'] as &$r) {
+        $app = (string)($r['app'] ?? '');
+        if ($app === '' || isset($prev[mb_strtolower($app)])) continue;
+        $present = false;
+        foreach ($apps as $x) if (strcasecmp($x['name'], $app) === 0) { $present = true; break; }
+        if (!$present) continue;
+        if ($now - (int)($r['last'] ?? 0) < MX_AUTO_COOLDOWN) continue;
+        if (mx_apply_preset($s, (string)($r['preset'] ?? ''))) $r['last'] = $now;
+    }
+    unset($r);
+}
 function mx_pname(array $in): string {
     return trim(mb_substr((string)($in['name'] ?? ''), 0, 30));
 }
@@ -161,8 +187,10 @@ if ($a === 'agent') {
     }
 
     [$f, $s] = mx_open();
+    $prevNames = array_map(fn($x) => (string)($x['name'] ?? ''), $s['apps']);
     $s['apps'] = $apps;
     $s['ts'] = time();
+    mx_run_autos($s, $prevNames, $apps);
     if ($newIcons) $s['icon_names'] = array_values(array_unique(array_merge($s['icon_names'], array_map('strval', array_keys($newIcons)))));
     $cmds = $s['cmds'];
     $s['cmds'] = [];
@@ -219,6 +247,7 @@ if ($a === 'state') {
         'online'        => time() - (int)$s['ts'] <= 15,
         'presets'       => array_map('strval', array_keys($s['presets'])),
         'preset_counts' => (object)$counts,
+        'autos'         => array_map(fn($r) => ['app' => (string)($r['app'] ?? ''), 'preset' => (string)($r['preset'] ?? '')], array_values($s['autos'])),
     ]);
 }
 
@@ -269,11 +298,7 @@ if ($a === 'preset_save') {
 if ($a === 'preset_apply') {
     $name = mx_pname(mx_in());
     [$f, $s] = mx_open();
-    if (!isset($s['presets'][$name])) { mx_close($f); mx_out(['error' => 'no preset'], 404); }
-    foreach ($s['presets'][$name] as $n => $lv) {
-        mx_push($s, (string)$n, 'volume', (int)($lv['volume'] ?? 0));
-        mx_push($s, (string)$n, 'muted', !empty($lv['muted']));
-    }
+    if (!mx_apply_preset($s, $name)) { mx_close($f); mx_out(['error' => 'no preset'], 404); }
     mx_close($f, $s);
     mx_out(['ok' => true]);
 }
@@ -281,6 +306,29 @@ if ($a === 'preset_delete') {
     $name = mx_pname(mx_in());
     [$f, $s] = mx_open();
     unset($s['presets'][$name]);
+    $s['autos'] = array_values(array_filter($s['autos'], fn($r) => ($r['preset'] ?? '') !== $name));   // правила удалённого пресета тоже уходят
+    mx_close($f, $s);
+    mx_out(['ok' => true]);
+}
+
+// ---- Автопресеты: «когда запустилось приложение — применить пресет» ----
+if ($a === 'auto_save') {
+    $in = mx_in();
+    $app = trim(mb_substr((string)($in['app'] ?? ''), 0, 100));
+    $preset = mx_pname($in);   // имя пресета передаётся в поле name
+    if ($app === '' || $preset === '') mx_out(['error' => 'bad request'], 400);
+    [$f, $s] = mx_open();
+    if (!isset($s['presets'][$preset])) { mx_close($f); mx_out(['error' => 'no preset'], 404); }
+    $s['autos'] = array_values(array_filter($s['autos'], fn($r) => strcasecmp((string)($r['app'] ?? ''), $app) !== 0));   // одно правило на приложение
+    if (count($s['autos']) >= 20) { mx_close($f); mx_out(['error' => 'too many'], 400); }
+    $s['autos'][] = ['app' => $app, 'preset' => $preset, 'last' => 0];
+    mx_close($f, $s);
+    mx_out(['ok' => true]);
+}
+if ($a === 'auto_delete') {
+    $app = trim(mb_substr((string)(mx_in()['app'] ?? ''), 0, 100));
+    [$f, $s] = mx_open();
+    $s['autos'] = array_values(array_filter($s['autos'], fn($r) => strcasecmp((string)($r['app'] ?? ''), $app) !== 0));
     mx_close($f, $s);
     mx_out(['ok' => true]);
 }

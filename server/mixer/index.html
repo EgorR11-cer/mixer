@@ -116,6 +116,15 @@ input[type=range]::-moz-range-thumb{width:27px;height:27px;border:0;border-radiu
       <button class="btn" id="psave">Сохранить пресет</button>
     </div>
     <div id="plist"></div>
+    <div class="card" id="autoCard">
+      <h3>⚡ Автопресеты</h3>
+      <p>Когда приложение запустится на ПК (появится в микшере), сам применится выбранный пресет.</p>
+      <input class="field" id="aapp" list="aapps" placeholder="Приложение, например r5apex_dx12.exe" autocomplete="off" style="margin-bottom:10px">
+      <datalist id="aapps"></datalist>
+      <select class="field" id="apreset" style="margin-bottom:10px"></select>
+      <button class="btn" id="aadd">Добавить правило</button>
+      <div id="alist" style="margin-top:12px"></div>
+    </div>
   </section>
 
   <section id="tab-more">
@@ -255,6 +264,44 @@ $('psave').onclick = () => {
   }).catch(() => {});
 };
 
+/* ---------- автопресеты ---------- */
+let autosSig = '';
+function renderAutos(autos) {
+  const sel = $('apreset'), cur = sel.value;
+  const psig = presetNames.join('\u0001');
+  if (sel.dataset.sig !== psig) {
+    sel.dataset.sig = psig; sel.innerHTML = '';
+    presetNames.forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = 'Пресет: ' + n; sel.appendChild(o); });
+    if (presetNames.includes(cur)) sel.value = cur;
+  }
+  const dl = $('aapps'), names = lastApps.filter(a => a.name !== '__master__').map(a => a.name);
+  const dsig = names.join('\u0001');
+  if (dl.dataset.sig !== dsig) { dl.dataset.sig = dsig; dl.innerHTML = names.map(n => '<option value="' + n.replace(/"/g, '&quot;') + '">').join(''); }
+  const sig = JSON.stringify(autos);
+  if (sig === autosSig) return;
+  autosSig = sig;
+  const box = $('alist'); box.innerHTML = '';
+  autos.forEach(r => {
+    const c = document.createElement('div'); c.className = 'pcard';
+    const main = document.createElement('div'); main.className = 'pmain';
+    main.innerHTML = '<span class="pn"></span><span class="pc"></span>';
+    main.querySelector('.pn').textContent = r.app;
+    main.querySelector('.pc').textContent = '→ пресет «' + r.preset + '»';
+    const del = document.createElement('button'); del.className = 'pdel'; del.textContent = '🗑';
+    del.onclick = () => api('auto_delete', { app: r.app }).then(() => { toast('Правило удалено'); refresh(true); }).catch(() => {});
+    c.append(main, del); box.appendChild(c);
+  });
+}
+$('aadd').onclick = () => {
+  const app = $('aapp').value.trim(), name = $('apreset').value;
+  if (!app) { toast('Укажите приложение'); return; }
+  if (!name) { toast('Сначала сохраните пресет'); return; }
+  api('auto_save', { app, name }).then(d => {
+    if (d.error) { toast(d.error === 'too many' ? 'Максимум 20 правил' : 'Не удалось сохранить'); return; }
+    $('aapp').value = ''; toast('Правило добавлено'); refresh(true);
+  }).catch(() => {});
+};
+
 /* ---------- приложения ---------- */
 function setIcon(name) {
   const o = rows[name]; if (!o || !iconCache[name]) return;
@@ -355,7 +402,7 @@ async function refresh(force) {
     $('login').style.display = 'none'; $('app').style.display = 'block';
     setStatus(d.online, d.online ? 'ПК на связи' : 'ПК не в сети');
     presetNames = d.presets || []; renderPresets(d.preset_counts || {});
-    lastApps = d.apps; renderHidden(d.apps);
+    lastApps = d.apps; renderHidden(d.apps); renderAutos(d.autos || []);
     const vis = d.apps.filter(a => a.name === '__master__' || !hidden.has(a.name));
     const names = {}; vis.forEach(a => { names[a.name] = 1; });
     Object.keys(rows).forEach(n => { if (!names[n]) { rows[n].r.remove(); delete rows[n]; } });
