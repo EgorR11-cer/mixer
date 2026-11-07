@@ -132,6 +132,10 @@ def set_autostart(on):
 def msgbox(text, title="Микшер"):
     ctypes.windll.user32.MessageBoxW(0, text, title, 0x40 | 0x10000)   # информация, поверх всех окон
 
+def ask(text, title="Микшер"):
+    """Вопрос Да/Нет поверх всех окон; True — «Да»."""
+    return ctypes.windll.user32.MessageBoxW(0, text, title, 0x24 | 0x40000) == 6
+
 def tray_image(online):
     from PIL import Image, ImageDraw
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
@@ -175,8 +179,52 @@ def run_tray():
     def toggle_autostart(*_):
         set_autostart(not autostart_enabled())
 
+    import updater
+    declined = set()            # версии, от которых отказались в этом запуске
+
+    def do_update(info):
+        if not updater.can_self_update():
+            webbrowser.open(info["page"] or f"https://github.com/{updater.REPO}/releases/latest")
+            return
+        icon.title = "Микшер — скачиваю обновление…"
+        try:
+            updater.install(info)
+        except Exception as e:
+            log.info(f"update: {e}")
+            icon.title = "Микшер"
+            msgbox("Не удалось установить обновление. Скачайте Mixer.exe вручную со страницы релизов.")
+            webbrowser.open(info["page"] or f"https://github.com/{updater.REPO}/releases/latest")
+            return
+        quit_()                 # скрипт подменит exe и сам запустит новую версию
+
+    def check_updates(manual=False):
+        try:
+            info = updater.check()
+        except Exception as e:
+            log.info(f"update check: {e}")
+            if manual:
+                msgbox("Не удалось проверить обновления. Проверьте интернет.")
+            return
+        if info is None:
+            if manual:
+                msgbox("У вас последняя версия.")
+            return
+        if not manual and info["n"] in declined:
+            return
+        if ask(f"Вышла новая версия: {info['name']}.\n\nОбновить сейчас? Программа перезапустится сама."):
+            do_update(info)
+        else:
+            declined.add(info["n"])
+
+    def update_loop():
+        agent.stop.wait(20)                       # даём программе спокойно запуститься
+        while not agent.stop.is_set():
+            check_updates()
+            agent.stop.wait(6 * 3600)
+
     agent = Agent(WinAudio(), load_config, on_status, log.info)
     threading.Thread(target=agent.run, daemon=True, name="agent").start()
+    threading.Thread(target=update_loop, daemon=True, name="updates").start()
 
     def quit_(*_):
         agent.stop.set()
@@ -189,6 +237,8 @@ def run_tray():
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Запускать вместе с Windows", toggle_autostart, checked=lambda item: autostart_enabled()),
         pystray.MenuItem("Настройки…", lambda *_: spawn("--settings")),
+        pystray.MenuItem("Проверить обновления…", lambda *_: threading.Thread(target=check_updates, args=(True,), daemon=True).start()),
+        pystray.MenuItem(f"Версия: {updater.current() or 'локальная'}", None, enabled=False),
         pystray.MenuItem("Выход", quit_),
     )
     icon.run()
