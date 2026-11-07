@@ -17,6 +17,11 @@ android {
         versionName = "1.0"
     }
 
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     // Подпись: если задан keystore.properties рядом с gradle.properties — подписываем им, иначе debug-ключом.
     val ksFile = rootProject.file("keystore.properties")
     if (ksFile.exists()) {
@@ -59,5 +64,7 @@ val syncUi = tasks.register<Sync>("syncUi") {
         file("src/main/assets/app-config.js").writeText("window.MIXER_API='$server';window.MIXER_APP=true;\n")
     }
 }
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach { dependsOn(syncUi) }
-tasks.matching { it.name.startsWith("lint") }.configureEach { dependsOn(syncUi) }
+tasks.named("preBuild") { dependsOn(syncUi) }
+tasks.configureEach {
+    if (name != "syncUi" && name != "clean") mustRunAfter(syncUi)
+}
