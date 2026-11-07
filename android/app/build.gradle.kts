@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,7 +20,8 @@ android {
     // Подпись: если задан keystore.properties рядом с gradle.properties — подписываем им, иначе debug-ключом.
     val ksFile = rootProject.file("keystore.properties")
     if (ksFile.exists()) {
-        val p = java.util.Properties().apply { ksFile.inputStream().use { load(it) } }
+        val p = Properties()
+        ksFile.inputStream().use { p.load(it) }
         signingConfigs.create("release") {
             storeFile = rootProject.file(p.getProperty("storeFile"))
             storePassword = p.getProperty("storePassword")
