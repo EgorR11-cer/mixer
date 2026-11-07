@@ -36,26 +36,15 @@ def latest():
 
 
 def check():
-    """Новый релиз, если он новее установленной сборки, иначе None."""
+    """Новый релиз, если он новее установленной сборки, иначе None. Локальная сборка (номер 0) не обновляется."""
+    if current() == 0:
+        return None
     info = latest()
     return info if info and info["n"] > current() else None
 
 
 def can_self_update():
     return bool(getattr(sys, "frozen", False)) and os.name == "nt"
-
-
-# Ждём, пока старый Mixer.exe закроется (пока он запущен, файл занят и move не проходит), подменяем и запускаем.
-_BAT = """@echo off
-for /l %%i in (1,1,60) do (
-  move /y "%MX_NEW%" "%MX_OLD%" >nul 2>&1 && goto ok
-  timeout /t 1 /nobreak >nul
-)
-exit /b 1
-:ok
-start "" "%MX_OLD%"
-(goto) 2>nul & del "%~f0"
-"""
 
 
 def download(info, new_path):
@@ -74,16 +63,43 @@ def download(info, new_path):
         raise RuntimeError("скачанный файл повреждён")
 
 
+def cleanup():
+    """Убрать хвосты прошлого обновления (Mixer.exe.old / .new)."""
+    if not getattr(sys, "frozen", False):
+        return
+    for ext in (".old", ".new"):
+        try:
+            os.remove(sys.executable + ext)
+        except OSError:
+            pass
+
+
 def install(info):
-    """Скачать новый exe рядом со старым и запустить подменяющий скрипт. После True — программу нужно закрыть."""
+    """Скачать новый exe, подменить файл и запустить новую копию. После возврата программу нужно закрыть.
+
+    Запущенный exe нельзя перезаписать, но можно переименовать: старый уходит в Mixer.exe.old,
+    новый встаёт на его место. Никаких скриптов и консольных окон.
+    """
     old = sys.executable
-    new = old + ".new"
+    new, bak = old + ".new", old + ".old"
     download(info, new)
-    bat = os.path.join(os.environ.get("TEMP", os.path.dirname(old)), "mixer_update.bat")
-    with open(bat, "w", encoding="ascii") as f:        # только ASCII: пути с кириллицей идут через переменные окружения
-        f.write(_BAT)
-    env = dict(os.environ, MX_OLD=old, MX_NEW=new, PYINSTALLER_RESET_ENVIRONMENT="1")
+    try:
+        if os.path.exists(bak):
+            os.remove(bak)
+        os.replace(old, bak)
+        try:
+            os.replace(new, old)
+        except OSError:
+            os.replace(bak, old)          # откат: старая версия остаётся на месте
+            raise
+    except OSError:
+        try:
+            os.remove(new)
+        except OSError:
+            pass
+        raise
+    env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
     env.pop("_MEIPASS2", None)
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
-    subprocess.Popen(["cmd", "/c", bat], env=env, creationflags=flags, close_fds=True)
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen([old, "--after-update"], env=env, creationflags=flags, close_fds=True)
     return True

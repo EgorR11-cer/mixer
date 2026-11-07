@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 
 APP = "Mixer"
@@ -180,6 +181,7 @@ def run_tray():
         set_autostart(not autostart_enabled())
 
     import updater
+    updater.cleanup()
     declined = set()            # версии, от которых отказались в этом запуске
 
     def do_update(info):
@@ -195,9 +197,19 @@ def run_tray():
             msgbox("Не удалось установить обновление. Скачайте Mixer.exe вручную со страницы релизов.")
             webbrowser.open(info["page"] or f"https://github.com/{updater.REPO}/releases/latest")
             return
-        quit_()                 # скрипт подменит exe и сам запустит новую версию
+        # новая копия уже запущена и ждёт, пока эта закроется
+        try:
+            icon.stop()
+        except Exception:
+            pass
+        time.sleep(0.5)
+        os._exit(0)
 
     def check_updates(manual=False):
+        if updater.current() == 0:
+            if manual:
+                msgbox("Это локальная сборка без номера версии, обновления для неё отключены.\nСкачайте Mixer.exe со страницы Releases на GitHub.")
+            return
         try:
             info = updater.check()
         except Exception as e:
@@ -244,9 +256,18 @@ def run_tray():
     icon.run()
 
 
-def single_instance():
-    h = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\MixerAgentSingleton")
-    return ctypes.windll.kernel32.GetLastError() != 183, h        # 183 = ERROR_ALREADY_EXISTS
+def single_instance(wait=0):
+    """True, если других копий нет. После обновления новая копия ждёт (до wait секунд), пока закроется старая."""
+    k = ctypes.windll.kernel32
+    t0 = time.time()
+    while True:
+        h = k.CreateMutexW(None, False, "Local\\MixerAgentSingleton")
+        if k.GetLastError() != 183:                    # 183 = ERROR_ALREADY_EXISTS
+            return True, h
+        k.CloseHandle(h)                               # без этого замок не освободится, даже когда старая копия закроется
+        if time.time() - t0 >= wait:
+            return False, None
+        time.sleep(0.3)
 
 
 if __name__ == "__main__":
@@ -255,6 +276,6 @@ if __name__ == "__main__":
     elif "--window" in sys.argv:
         run_window()
     else:
-        ok, _mutex = single_instance()
+        ok, _mutex = single_instance(wait=20 if "--after-update" in sys.argv else 0)
         if ok:
             run_tray()
