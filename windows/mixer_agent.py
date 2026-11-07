@@ -4,6 +4,7 @@
   (без аргументов)  — трей и агент
   --settings        — окно настроек (адрес сервера и ключ)
   --window          — окно микшера (то же, что на телефоне, с вкладкой подключения)
+  --pair            — окно с QR-кодом для подключения телефона
 """
 import ctypes
 import json
@@ -71,6 +72,8 @@ def run_settings():
     key = tk.Entry(root, width=42, show="•"); key.grid(row=1, column=1, **pad)
     key.insert(0, cfg.get("key", ""))
     tk.Label(root, text="Ключ лежит на сервере в data/mixer_key.txt", fg="#777").grid(row=2, column=1, sticky="w", padx=12)
+    import updater
+    tk.Label(root, text=f"Версия программы: {updater.version_name()}", fg="#777").grid(row=3, column=0, sticky="w", **pad)
 
     def ok():
         if not server.get().strip().startswith("http") or len(key.get().strip()) < 16:
@@ -92,11 +95,75 @@ def run_window():
     url = f"{cfg['server'].rstrip('/')}/mixer/?desktop#{quote(cfg['key'], safe='')}"
     try:
         import webview
-        webview.create_window("Микшер", url, width=420, height=780, background_color="#0e0f13")
+        import updater
+        webview.create_window(f"Микшер {updater.version_name()}", url, width=420, height=780, background_color="#0e0f13")
         webview.start()
     except Exception as e:                       # нет pywebview/WebView2 — откроем в браузере
         log.info(f"webview: {e}")
         webbrowser.open(url)
+
+
+# ---------- окно «Подключить телефон»: QR-код + цифры ----------
+def pair_url(server, code):
+    return f"{server.rstrip('/')}/mixer/#pair={code}"
+
+
+def make_qr_image(text, box=8):
+    import qrcode
+    qr = qrcode.QRCode(box_size=box, border=2, error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(text)
+    qr.make(fit=True)
+    return qr.make_image(fill_color="black", back_color="white").get_image().convert("RGB")
+
+
+def run_pair():
+    import tkinter as tk
+    from PIL import ImageTk
+    from core import pair_new
+    cfg = load_config()
+    if not cfg.get("server") or not cfg.get("key"):
+        return run_settings()
+    root = tk.Tk()
+    root.title("Микшер — подключить телефон")
+    root.resizable(False, False)
+    root.attributes("-topmost", True)
+    tk.Label(root, text="Наведите камеру в приложении «Микшер» на QR-код", font=("Segoe UI", 11)).pack(padx=20, pady=(16, 8))
+    img_lbl = tk.Label(root)
+    img_lbl.pack(padx=20)
+    code_lbl = tk.Label(root, font=("Segoe UI", 26, "bold"))
+    code_lbl.pack(pady=(8, 0))
+    info = tk.Label(root, fg="#777", text="или введите эти цифры вручную")
+    info.pack()
+    left_lbl = tk.Label(root, fg="#777")
+    left_lbl.pack(pady=(0, 6))
+    tk.Button(root, text="Новый код", width=16, command=lambda: new_code()).pack(pady=(0, 16))
+    st = {"deadline": 0.0}
+
+    def new_code():
+        try:
+            d = pair_new(cfg["server"], cfg["key"])
+        except Exception as e:
+            log.info(f"pair_new: {e}")
+            left_lbl.config(text="Не удалось получить код. Проверьте адрес сервера и ключ в настройках.")
+            return
+        code = str(d["code"])
+        photo = ImageTk.PhotoImage(make_qr_image(pair_url(cfg["server"], code)))
+        img_lbl.config(image=photo)
+        img_lbl.image = photo
+        code_lbl.config(text=f"{code[:3]} {code[3:]}")
+        st["deadline"] = time.time() + int(d.get("ttl", 300))
+
+    def tick():
+        left = int(st["deadline"] - time.time())
+        if left <= 0:
+            new_code()                       # код одноразовый и живёт 5 минут — сами выпускаем новый
+        else:
+            left_lbl.config(text=f"Код действует ещё {left // 60}:{left % 60:02d}")
+        root.after(1000, tick)
+
+    new_code()
+    tick()
+    root.mainloop()
 
 
 # ---------- автозапуск ----------
@@ -150,7 +217,8 @@ def tray_image(online):
 
 def run_tray():
     import pystray
-    from core import Agent, pair_new
+    import updater
+    from core import Agent
     from audio_win import WinAudio
 
     if not load_config().get("key"):               # первый запуск
@@ -168,19 +236,11 @@ def run_tray():
             icon.update_menu()
 
     def show_code(*_):
-        cfg = load_config()
-        try:
-            d = pair_new(cfg["server"], cfg["key"])
-            c = str(d["code"])
-            msgbox(f"Код для телефона:\n\n        {c[:3]} {c[3:]}\n\nВведите его в приложении «Микшер». Действует 5 минут.")
-        except Exception as e:
-            log.info(f"pair_new: {e}")
-            msgbox("Не удалось получить код. Проверьте адрес сервера и ключ в настройках.")
+        spawn("--pair")
 
     def toggle_autostart(*_):
         set_autostart(not autostart_enabled())
 
-    import updater
     updater.cleanup()
     declined = set()            # версии, от которых отказались в этом запуске
 
@@ -234,7 +294,7 @@ def run_tray():
             check_updates()
             agent.stop.wait(6 * 3600)
 
-    agent = Agent(WinAudio(), load_config, on_status, log.info)
+    agent = Agent(WinAudio(), load_config, on_status, log.info, version=updater.current())
     threading.Thread(target=agent.run, daemon=True, name="agent").start()
     threading.Thread(target=update_loop, daemon=True, name="updates").start()
 
@@ -250,7 +310,7 @@ def run_tray():
         pystray.MenuItem("Запускать вместе с Windows", toggle_autostart, checked=lambda item: autostart_enabled()),
         pystray.MenuItem("Настройки…", lambda *_: spawn("--settings")),
         pystray.MenuItem("Проверить обновления…", lambda *_: threading.Thread(target=check_updates, args=(True,), daemon=True).start()),
-        pystray.MenuItem(f"Версия: {updater.current() or 'локальная'}", None, enabled=False),
+        pystray.MenuItem(f"Версия: {updater.version_name()}", None, enabled=False),
         pystray.MenuItem("Выход", quit_),
     )
     icon.run()
@@ -275,6 +335,8 @@ if __name__ == "__main__":
         run_settings()
     elif "--window" in sys.argv:
         run_window()
+    elif "--pair" in sys.argv:
+        run_pair()
     else:
         ok, _mutex = single_instance(wait=20 if "--after-update" in sys.argv else 0)
         if ok:

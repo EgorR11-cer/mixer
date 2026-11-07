@@ -5,6 +5,7 @@
 //   • токен устройства — выдаётся телефону при сопряжении по коду, можно отозвать («Отвязать»).
 // Состояние: data/mixer.json, иконки: data/mixer_icons.json, токены: data/mixer_tokens.json,
 // коды сопряжения и счётчики попыток: data/mixer_pair.json.
+// Версия сервера показывается в настройках приложений (вкладка «Ещё»).
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -27,7 +28,12 @@ define('MX_FILE', MX_DIR . '/mixer.json');
 define('MX_ICONS', MX_DIR . '/mixer_icons.json');
 define('MX_TOKENS', MX_DIR . '/mixer_tokens.json');
 define('MX_PAIR', MX_DIR . '/mixer_pair.json');
-const MX_DEF = ['apps' => [], 'ts' => 0, 'cmds' => [], 'presets' => [], 'icon_names' => [], 'autos' => []];
+const MX_VERSION = '2.0';
+const MX_DEF = ['apps' => [], 'ts' => 0, 'cmds' => [], 'presets' => [], 'icon_names' => [], 'autos' => [],
+                'devices' => [], 'schedules' => [], 'tz' => 'Europe/Moscow', 'pc_ver' => 0];
+const MX_POLL_US = 40000;           // как часто сервер заглядывает в очередь команд, пока ждёт (было 150 мс)
+const MX_SCHED_CATCHUP = 10;        // если ПК был офлайн в нужную минуту, правило сработает в течение 10 минут
+const MX_MAX_SCHEDULES = 20;
 const MX_AUTO_COOLDOWN = 60;   // не чаще раза в минуту на одно правило
 const MX_MAX_DEVICES = 10;
 const MX_PAIR_TTL = 300;
@@ -125,6 +131,35 @@ function mx_run_autos(array &$s, array $prevNames, array $apps): void {
 function mx_pname(array $in): string {
     return trim(mb_substr((string)($in['name'] ?? ''), 0, 30));
 }
+// Быстрая проверка без блокировки: есть ли в очереди команды (файл маленький, читается за доли миллисекунды)
+function mx_peek_cmds(): bool {
+    $raw = @file_get_contents(MX_FILE);
+    if ($raw === false || $raw === '') return false;     // файл как раз перезаписывают — глянем в следующий раз
+    $d = json_decode($raw, true);
+    return is_array($d) && !empty($d['cmds']);
+}
+function mx_tz_ok(string $tz): bool {
+    return $tz !== '' && in_array($tz, timezone_identifiers_list(), true);
+}
+// Расписание: «в HH:MM по дням — применить пресет». Проверяется, пока ПК на связи (каждые несколько секунд).
+function mx_run_schedules(array &$s): void {
+    if (!$s['schedules']) return;
+    try { $now = new DateTime('now', new DateTimeZone(mx_tz_ok((string)$s['tz']) ? (string)$s['tz'] : 'Europe/Moscow')); }
+    catch (Exception $e) { return; }
+    $today = $now->format('Y-m-d');
+    $nowMin = (int)$now->format('G') * 60 + (int)$now->format('i');
+    $dow = (int)$now->format('N');                     // 1 = понедельник … 7 = воскресенье
+    foreach ($s['schedules'] as &$r) {
+        if (($r['last'] ?? '') === $today) continue;
+        $days = (array)($r['days'] ?? []);
+        if ($days && !in_array($dow, $days, true)) continue;
+        [$h, $m] = array_map('intval', explode(':', (string)($r['time'] ?? '99:99')) + [0, 0]);
+        $diff = $nowMin - ($h * 60 + $m);
+        if ($diff < 0 || $diff > MX_SCHED_CATCHUP) continue;
+        if (mx_apply_preset($s, (string)($r['preset'] ?? ''))) $r['last'] = $today;
+    }
+    unset($r);
+}
 
 $a = (string)($_GET['a'] ?? '');
 
@@ -186,11 +221,20 @@ if ($a === 'agent') {
         mx_close($fi, $ic);
     }
 
+    $devices = [];
+    foreach (array_slice((array)($in['devices'] ?? []), 0, 20) as $d) {
+        if (!is_array($d) || !isset($d['id'], $d['name'])) continue;
+        $devices[] = ['id' => mb_substr((string)$d['id'], 0, 200), 'name' => mb_substr((string)$d['name'], 0, 80), 'default' => !empty($d['default'])];
+    }
+
     [$f, $s] = mx_open();
     $prevNames = array_map(fn($x) => (string)($x['name'] ?? ''), $s['apps']);
     $s['apps'] = $apps;
+    $s['devices'] = $devices;
+    $s['pc_ver'] = max(0, (int)($in['ver'] ?? 0));
     $s['ts'] = time();
     mx_run_autos($s, $prevNames, $apps);
+    mx_run_schedules($s);
     if ($newIcons) $s['icon_names'] = array_values(array_unique(array_merge($s['icon_names'], array_map('strval', array_keys($newIcons)))));
     $cmds = $s['cmds'];
     $s['cmds'] = [];
@@ -198,7 +242,8 @@ if ($a === 'agent') {
 
     $t0 = microtime(true);
     while (!$cmds && microtime(true) - $t0 < 4 && !connection_aborted()) {
-        usleep(150000);
+        usleep(MX_POLL_US);
+        if (!mx_peek_cmds()) continue;
         [$f, $s] = mx_open();
         if ($s['cmds']) {
             $cmds = $s['cmds'];
@@ -248,6 +293,11 @@ if ($a === 'state') {
         'presets'       => array_map('strval', array_keys($s['presets'])),
         'preset_counts' => (object)$counts,
         'autos'         => array_map(fn($r) => ['app' => (string)($r['app'] ?? ''), 'preset' => (string)($r['preset'] ?? '')], array_values($s['autos'])),
+        'devices'       => $s['devices'],
+        'schedules'     => array_map(fn($r) => ['id' => (string)($r['id'] ?? ''), 'time' => (string)($r['time'] ?? ''), 'days' => array_values((array)($r['days'] ?? [])), 'preset' => (string)($r['preset'] ?? '')], array_values($s['schedules'])),
+        'tz'            => (string)$s['tz'],
+        'pc_ver'        => (int)$s['pc_ver'],
+        'server_ver'    => MX_VERSION,
     ]);
 }
 
@@ -269,6 +319,17 @@ if ($a === 'set') {
         if (!in_array($m, ['playpause', 'next', 'prev'], true)) { mx_close($f); mx_out(['error' => 'bad media'], 400); }
         $s['cmds'][] = ['media' => $m];
         $s['cmds'] = array_slice($s['cmds'], -300);
+        mx_close($f, $s);
+        mx_out(['ok' => true]);
+    }
+    if (isset($in['device'])) {                       // сменить устройство вывода звука на ПК
+        $id = (string)$in['device'];
+        $known = array_column($s['devices'], 'id');
+        if (!in_array($id, $known, true)) { mx_close($f); mx_out(['error' => 'bad device'], 400); }
+        $s['cmds'] = array_values(array_filter($s['cmds'], fn($c) => !isset($c['device'])));
+        $s['cmds'][] = ['device' => $id];
+        foreach ($s['devices'] as &$dv) $dv['default'] = ($dv['id'] === $id);   // сразу показываем выбранное
+        unset($dv);
         mx_close($f, $s);
         mx_out(['ok' => true]);
     }
@@ -307,6 +368,7 @@ if ($a === 'preset_delete') {
     [$f, $s] = mx_open();
     unset($s['presets'][$name]);
     $s['autos'] = array_values(array_filter($s['autos'], fn($r) => ($r['preset'] ?? '') !== $name));   // правила удалённого пресета тоже уходят
+    $s['schedules'] = array_values(array_filter($s['schedules'], fn($r) => ($r['preset'] ?? '') !== $name));
     mx_close($f, $s);
     mx_out(['ok' => true]);
 }
@@ -329,6 +391,32 @@ if ($a === 'auto_delete') {
     $app = trim(mb_substr((string)(mx_in()['app'] ?? ''), 0, 100));
     [$f, $s] = mx_open();
     $s['autos'] = array_values(array_filter($s['autos'], fn($r) => strcasecmp((string)($r['app'] ?? ''), $app) !== 0));
+    mx_close($f, $s);
+    mx_out(['ok' => true]);
+}
+
+// ---- Пресеты по времени ----
+if ($a === 'sched_save') {
+    $in = mx_in();
+    $time = (string)($in['time'] ?? '');
+    $preset = mx_pname($in);                          // имя пресета передаётся в поле name
+    if (!preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time) || $preset === '') mx_out(['error' => 'bad request'], 400);
+    $days = array_values(array_unique(array_filter(array_map('intval', (array)($in['days'] ?? [])), fn($d) => $d >= 1 && $d <= 7)));
+    sort($days);
+    if (count($days) === 7) $days = [];               // все дни = «каждый день»
+    $tz = (string)($in['tz'] ?? '');
+    [$f, $s] = mx_open();
+    if (!isset($s['presets'][$preset])) { mx_close($f); mx_out(['error' => 'no preset'], 404); }
+    if (count($s['schedules']) >= MX_MAX_SCHEDULES) { mx_close($f); mx_out(['error' => 'too many'], 400); }
+    if (mx_tz_ok($tz)) $s['tz'] = $tz;                // часовой пояс берём с телефона
+    $s['schedules'][] = ['id' => bin2hex(random_bytes(3)), 'time' => $time, 'days' => $days, 'preset' => $preset, 'last' => ''];
+    mx_close($f, $s);
+    mx_out(['ok' => true]);
+}
+if ($a === 'sched_delete') {
+    $id = (string)(mx_in()['id'] ?? '');
+    [$f, $s] = mx_open();
+    $s['schedules'] = array_values(array_filter($s['schedules'], fn($r) => ($r['id'] ?? '') !== $id));
     mx_close($f, $s);
     mx_out(['ok' => true]);
 }

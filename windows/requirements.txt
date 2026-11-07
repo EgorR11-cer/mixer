@@ -4,5 +4,6 @@ psutil
 pywin32
 pystray
 Pillow
+qrcode
 pywebview
 pyinstaller

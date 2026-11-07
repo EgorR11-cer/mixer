@@ -19,6 +19,12 @@ def current():
         return 0
 
 
+def version_name():
+    """Как версия называется для человека: «1.123» (как в названии релиза) или «локальная сборка»."""
+    n = current()
+    return f"1.{n}" if n else "локальная сборка"
+
+
 def latest():
     """Последний релиз: {'n', 'name', 'url', 'size', 'page'} или None, если не удалось/нет Mixer.exe."""
     req = urllib.request.Request(API, headers={"User-Agent": "MixerAgent", "Accept": "application/vnd.github+json"})

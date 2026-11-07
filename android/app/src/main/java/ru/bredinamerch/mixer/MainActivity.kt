@@ -7,13 +7,17 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -21,10 +25,46 @@ import java.net.URL
 /**
  * Приложение — это окно с интерфейсом микшера, который лежит внутри APK (assets),
  * а не открывается с сайта. С сервером (mixer.php) он общается по HTTPS напрямую.
+ * Нативная часть: сканер QR-кода, номер версии и проверка обновлений (через мост window.Android).
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var web: WebView
+
+    /** Результат сканера QR отдаём интерфейсу: window.onQrResult("текст из кода"). */
+    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
+        val text = result.contents ?: return@registerForActivityResult
+        web.evaluateJavascript("window.onQrResult&&window.onQrResult(${JSONObject.quote(text)})", null)
+    }
+
+    /** То, что интерфейс может вызывать из JavaScript. Страница грузится только из assets приложения. */
+    inner class Bridge {
+        @JavascriptInterface
+        fun scanQr() {
+            runOnUiThread {
+                scanLauncher.launch(
+                    ScanOptions()
+                        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        .setPrompt("Наведите камеру на QR-код на экране компьютера")
+                        .setBeepEnabled(false)
+                        .setOrientationLocked(false)
+                )
+            }
+        }
+
+        /** Версия установленного приложения, например «1.123». */
+        @JavascriptInterface
+        fun getVersion(): String = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+        } catch (_: Exception) {
+            "?"
+        }
+
+        @JavascriptInterface
+        fun checkUpdate() {
+            this@MainActivity.checkUpdate(manual = true)
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,16 +75,17 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         web = WebView(this).apply {
-            setBackgroundColor(Color.parseColor("#0E0F13"))
+            setBackgroundColor(Color.parseColor("#0B0D12"))
             overScrollMode = View.OVER_SCROLL_NEVER
             settings.apply {
                 javaScriptEnabled = true
-                domStorageEnabled = true            // тут хранится ключ устройства (localStorage)
+                domStorageEnabled = true            // тут хранится ключ устройства и тема (localStorage)
                 allowFileAccess = false
                 allowContentAccess = false
                 cacheMode = WebSettings.LOAD_DEFAULT
                 mediaPlaybackRequiresUserGesture = true
             }
+            addJavascriptInterface(Bridge(), "Android")
             webViewClient = object : WebViewClientCompat() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) =
                     assets.shouldInterceptRequest(request.url)
@@ -66,11 +107,16 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState != null) web.restoreState(savedInstanceState)
         else web.loadUrl("https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/index.html")
 
-        if (savedInstanceState == null) checkUpdate()
+        if (savedInstanceState == null) checkUpdate(manual = false)
     }
 
-    /** Смотрим последний релиз на GitHub; если он новее установленной версии — предлагаем скачать APK. */
-    private fun checkUpdate() {
+    private fun toastUi(text: String) = runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
+
+    /**
+     * Смотрим последний релиз на GitHub; если он новее установленной версии — предлагаем скачать APK.
+     * manual = true — проверка по кнопке в настройках: ответ показываем всегда, «Позже» не учитываем.
+     */
+    private fun checkUpdate(manual: Boolean) {
         val prefs = getSharedPreferences("mixer", MODE_PRIVATE)
         Thread {
             try {
@@ -80,7 +126,10 @@ class MainActivity : AppCompatActivity() {
                     setRequestProperty("User-Agent", "MixerApp")
                     setRequestProperty("Accept", "application/vnd.github+json")
                 }
-                if (conn.responseCode != 200) return@Thread
+                if (conn.responseCode != 200) {
+                    if (manual) toastUi("Не удалось проверить обновления")
+                    return@Thread
+                }
                 val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
                 val latest = json.optString("tag_name").removePrefix("v").toIntOrNull() ?: return@Thread
                 val assets = json.optJSONArray("assets") ?: return@Thread
@@ -91,14 +140,17 @@ class MainActivity : AppCompatActivity() {
                 val pi = packageManager.getPackageInfo(packageName, 0)
                 @Suppress("DEPRECATION")
                 val current = if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()
-                if (latest <= current) return@Thread
-                if (System.currentTimeMillis() < prefs.getLong("skip_$latest", 0L)) return@Thread
+                if (latest <= current) {
+                    if (manual) toastUi("Установлена последняя версия (${pi.versionName})")
+                    return@Thread
+                }
+                if (!manual && System.currentTimeMillis() < prefs.getLong("skip_$latest", 0L)) return@Thread
                 val title = json.optString("name").ifEmpty { "1.$latest" }
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     androidx.appcompat.app.AlertDialog.Builder(this)
                         .setTitle("Доступно обновление")
-                        .setMessage("Вышла новая версия: $title. Скачать и установить?")
+                        .setMessage("Вышла новая версия: $title (у вас ${pi.versionName}). Скачать и установить?")
                         .setPositiveButton("Обновить") { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(apk))) }
                         .setNegativeButton("Позже") { _, _ ->
                             prefs.edit().putLong("skip_$latest", System.currentTimeMillis() + 24L * 3600 * 1000).apply()
@@ -106,7 +158,8 @@ class MainActivity : AppCompatActivity() {
                         .show()
                 }
             } catch (_: Exception) {
-                // нет сети или GitHub недоступен — просто не проверяем
+                // нет сети или GitHub недоступен — тихо пропускаем; по кнопке скажем об этом
+                if (manual) toastUi("Не удалось проверить обновления")
             }
         }.start()
     }

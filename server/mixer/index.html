@@ -1,9 +1,8 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8">
+<html lang="ru" data-theme="dark"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-<meta name="theme-color" content="#0e0f13">
-<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0d12">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Микшер">
@@ -12,90 +11,170 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 <title>Микшер</title>
+<script>
+/* Тема ставится до отрисовки, чтобы не мигало. Выбор: auto | dark | light | aurora | sunset; акцент: theme | blue | violet | green | orange | pink */
+(function () {
+  var g = function (k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+  var t = g('mx_theme', 'auto');
+  if (t === 'auto') t = (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+  if (g('mx_fx', '') === 'lite') document.documentElement.dataset.fx = 'lite';
+})();
+</script>
 <style>
-:root{color-scheme:dark light;--bg:#0e0f13;--card:#181a20;--card2:#22252d;--text:#eceef3;--dim:#8b90a0;--accent:#4da3ff;--red:#e5484d;--track:#33363f;--nav:rgba(20,22,28,.86)}
-@media (prefers-color-scheme:light){:root{--bg:#f2f3f7;--card:#ffffff;--card2:#e9ebf1;--text:#15171c;--dim:#6b7080;--track:#d5d8e0;--nav:rgba(255,255,255,.88)}}
+:root{
+  color-scheme:dark;
+  --bg:#0b0d12;--b1:#3d6bff;--b2:#9b4dff;--b3:#12c9a5;
+  --glass:rgba(255,255,255,.075);--glass2:rgba(255,255,255,.13);--gb:rgba(255,255,255,.14);--solid:#1a1d26;
+  --text:#eef0f6;--dim:#a0a6b8;--accent:#5aa8ff;--ink:#04121f;--red:#ff5a62;--green:#3ddc84;
+  --track:rgba(255,255,255,.15);--nav:rgba(18,20,28,.55);--shadow:0 8px 30px rgba(0,0,0,.32);--blur:18px;
+}
+[data-theme=light]{color-scheme:light;--bg:#eef1f8;--b1:#7fb0ff;--b2:#c4a2ff;--b3:#7fe3cf;--glass:rgba(255,255,255,.62);--glass2:rgba(255,255,255,.9);--gb:rgba(255,255,255,.85);--solid:#fff;--text:#15171c;--dim:#667087;--accent:#1f7aff;--ink:#fff;--track:rgba(20,30,60,.14);--nav:rgba(255,255,255,.66);--shadow:0 8px 28px rgba(40,60,120,.14)}
+[data-theme=aurora]{--bg:#070d17;--b1:#00d4aa;--b2:#6a5cff;--b3:#00a2ff;--accent:#3df0c8;--ink:#02140f}
+[data-theme=sunset]{--bg:#150c12;--b1:#ff6a4d;--b2:#ff3d8b;--b3:#ffb347;--accent:#ff9a5a;--ink:#2a0d02}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overscroll-behavior:none}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overscroll-behavior:none;transition:background .4s,color .3s}
 button{font:inherit;color:inherit;border:0;cursor:pointer;background:none}
-#app{max-width:560px;margin:0 auto;padding:16px 16px calc(92px + env(safe-area-inset-bottom));padding-top:max(14px,env(safe-area-inset-top))}
+
+/* --- фон: мягкие цветные пятна под стеклом --- */
+.bg{position:fixed;inset:0;overflow:hidden;z-index:-1;pointer-events:none}
+.bg i{position:absolute;width:62vmax;height:62vmax;border-radius:50%;filter:blur(80px);opacity:.5;transition:background .5s;animation:drift 26s ease-in-out infinite alternate}
+.bg i:nth-child(1){background:var(--b1);left:-22vmax;top:-20vmax}
+.bg i:nth-child(2){background:var(--b2);right:-26vmax;top:18vh;animation-duration:32s;animation-delay:-8s}
+.bg i:nth-child(3){background:var(--b3);left:-10vmax;bottom:-30vmax;animation-duration:38s;animation-delay:-16s;opacity:.38}
+[data-theme=light] .bg i{opacity:.55}
+@keyframes drift{to{transform:translate3d(10vmax,6vmax,0) scale(1.12)}}
+
+/* --- стекло --- */
+.row,.card,.pmain,.pdel,.media button,.chip,.out{background:var(--glass);border:1px solid var(--gb);box-shadow:var(--shadow);-webkit-backdrop-filter:blur(var(--blur)) saturate(160%);backdrop-filter:blur(var(--blur)) saturate(160%)}
+[data-fx=lite]{--blur:0px}
+[data-fx=lite] .row,[data-fx=lite] .card,[data-fx=lite] .pmain,[data-fx=lite] .pdel,[data-fx=lite] .media button,[data-fx=lite] .chip,[data-fx=lite] .out{background:var(--solid);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+[data-fx=lite] .bg i,[data-fx=lite] *{animation:none!important}
+[data-fx=lite] .bg{display:none}
+
+#app{max-width:560px;margin:0 auto;padding:16px 16px calc(100px + env(safe-area-inset-bottom));padding-top:max(14px,env(safe-area-inset-top))}
 header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-h1{font-size:24px;margin:0;letter-spacing:-.3px}
-#status{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px}
-#status i{width:8px;height:8px;border-radius:50%;background:#3ddc84;display:inline-block}
-#status.off{color:#ff8a80}#status.off i{background:var(--red)}
+h1{font-size:26px;margin:0;letter-spacing:-.4px}
+#status{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:20px;background:var(--glass);border:1px solid var(--gb)}
+#status i{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s infinite}
+#status.off{color:#ff8a80}#status.off i{background:var(--red);animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(61,220,132,.55)}70%{box-shadow:0 0 0 7px rgba(61,220,132,0)}100%{box-shadow:0 0 0 0 rgba(61,220,132,0)}}
 section{display:none}
-nav{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:4px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:var(--nav);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-top:1px solid rgba(128,128,140,.18)}
-nav button{flex:1;max-width:180px;padding:7px 4px;border-radius:14px;color:var(--dim);display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px}
-nav button b{font-size:21px;font-weight:400;line-height:1}
-nav button.on{color:var(--accent);background:rgba(77,163,255,.12)}
+section.show{display:block;animation:slide .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes slide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes rise{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+
+nav{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 24px));display:flex;gap:4px;padding:6px;border-radius:24px;background:var(--nav);border:1px solid var(--gb);box-shadow:var(--shadow);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);z-index:4}
+[data-fx=lite] nav{background:var(--solid);-webkit-backdrop-filter:none;backdrop-filter:none}
+nav button{flex:1;padding:8px 4px;border-radius:18px;color:var(--dim);display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;transition:background .25s,color .25s,transform .15s}
+nav button b{font-size:20px;font-weight:400;line-height:1;transition:transform .25s cubic-bezier(.3,1.6,.5,1)}
+nav button:active{transform:scale(.94)}
+nav button.on{color:var(--accent);background:rgba(90,168,255,.16);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+nav button.on b{transform:translateY(-1px) scale(1.14)}
+
 .media{display:flex;gap:8px;margin-bottom:12px}
-.media button{flex:1;background:var(--card);border-radius:16px;padding:13px;font-size:21px;transition:transform .1s}
-.media button:active{transform:scale(.94);background:var(--card2)}
-.row{background:var(--card);border-radius:18px;padding:12px 14px 8px;margin-bottom:10px}
-.row.master{background:linear-gradient(135deg,rgba(77,163,255,.22),var(--card) 70%);padding-top:14px}
+.media button{flex:1;border-radius:18px;padding:13px;font-size:21px;transition:transform .12s,background .2s}
+.media button:active{transform:scale(.92);background:var(--glass2)}
+
+.out{border-radius:18px;padding:10px 14px;margin-bottom:12px;display:none;animation:rise .35s both}
+.out label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px}
+.out select{width:100%;border:0;border-radius:12px;padding:11px 12px;font-size:15px;color:var(--text);background:var(--glass2);appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat}
+.out select option{background:var(--solid);color:var(--text)}
+
+.row{border-radius:20px;padding:12px 14px 8px;margin-bottom:10px;animation:rise .4s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 45ms);transition:opacity .25s}
+.row.master{background:linear-gradient(135deg,rgba(90,168,255,.28),var(--glass) 72%);background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 30%,transparent),var(--glass) 72%);padding-top:14px}
+.row.muted{opacity:.8}
 .row.muted .ico,.row.muted .name,.row.muted input{opacity:.45}
 .top{display:flex;align-items:center;gap:10px;margin-bottom:4px}
-.ico{width:40px;height:40px;border-radius:11px;background:var(--card2);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--dim);flex-shrink:0;overflow:hidden;font-size:18px}
+.ico{width:42px;height:42px;border-radius:13px;background:var(--glass2);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--dim);flex-shrink:0;overflow:hidden;font-size:18px;transition:opacity .2s}
 .ico img{width:32px;height:32px;object-fit:contain}
-.name{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.val{color:var(--dim);font-variant-numeric:tabular-nums;min-width:2.4em;text-align:right}
-.mute{background:var(--card2);border-radius:11px;padding:8px 11px;font-size:16px}
+.name{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .2s}
+.val{color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums;min-width:2.4em;text-align:right}
+.mute{background:var(--glass2);border-radius:12px;padding:8px 11px;font-size:16px;transition:background .2s,transform .12s}
+.mute:active{transform:scale(.88)}
 .mute.on{background:var(--red);color:#fff}
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;background:transparent;margin:0;--p:50%}
-input[type=range]::-webkit-slider-runnable-track{height:10px;border-radius:5px;background:linear-gradient(90deg,var(--accent) var(--p),var(--track) var(--p))}
-input[type=range]::-moz-range-track{height:10px;border-radius:5px;background:linear-gradient(90deg,var(--accent) var(--p),var(--track) var(--p))}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:27px;height:27px;border-radius:50%;background:#fff;margin-top:-8.5px;box-shadow:0 1px 6px #0007}
-input[type=range]::-moz-range-thumb{width:27px;height:27px;border:0;border-radius:50%;background:#fff;box-shadow:0 1px 6px #0007}
-.card{background:var(--card);border-radius:18px;padding:14px;margin-bottom:12px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:36px;background:transparent;margin:0;--p:50%}
+input[type=range]::-webkit-slider-runnable-track{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--accent) var(--p),var(--track) var(--p));box-shadow:inset 0 1px 2px rgba(0,0,0,.25)}
+input[type=range]::-moz-range-track{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--accent) var(--p),var(--track) var(--p))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:#fff;margin-top:-8px;box-shadow:0 2px 8px rgba(0,0,0,.4),0 0 0 4px color-mix(in srgb,var(--accent) 30%,transparent);transition:transform .15s,box-shadow .15s}
+input[type=range]::-moz-range-thumb{width:28px;height:28px;border:0;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.2);box-shadow:0 2px 10px rgba(0,0,0,.45),0 0 0 8px color-mix(in srgb,var(--accent) 28%,transparent)}
+
+.card{border-radius:20px;padding:15px;margin-bottom:12px;animation:rise .4s cubic-bezier(.2,.8,.2,1) both}
 .card h3{margin:0 0 8px;font-size:15px}
-.card p{margin:0 0 10px;color:var(--dim);font-size:13px;line-height:1.4}
-.btn{display:block;width:100%;background:var(--accent);color:#04121f;font-weight:600;border-radius:12px;padding:12px}
-.btn.alt{background:var(--card2);color:var(--text)}
-.btn.danger{background:var(--card2);color:var(--red)}
-.field{width:100%;padding:12px;border-radius:12px;border:0;background:var(--card2);color:var(--text);font-size:16px;margin-bottom:10px}
-.pcard{display:flex;gap:8px;margin-bottom:10px}
-.pmain{flex:1;min-width:0;background:var(--card);border-radius:16px;padding:14px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;transition:transform .1s}
-.pmain:active{transform:scale(.98);background:var(--card2)}
+.card p{margin:0 0 10px;color:var(--dim);font-size:13px;line-height:1.45}
+.btn{display:block;width:100%;background:var(--accent);color:var(--ink);font-weight:600;border-radius:14px;padding:13px;transition:transform .12s,filter .2s}
+.btn:active{transform:scale(.97);filter:brightness(1.1)}
+.btn.alt{background:var(--glass2);color:var(--text)}
+.btn.danger{background:var(--glass2);color:var(--red)}
+.field{width:100%;padding:12px;border-radius:13px;border:1px solid transparent;background:var(--glass2);color:var(--text);font-size:16px;margin-bottom:10px;outline:0;transition:border-color .2s}
+.field:focus{border-color:var(--accent)}
+select.field option{background:var(--solid);color:var(--text)}
+.pcard{display:flex;gap:8px;margin-bottom:10px;animation:rise .35s both}
+.pmain{flex:1;min-width:0;border-radius:18px;padding:14px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;transition:transform .12s,background .2s}
+button.pmain:active{transform:scale(.98);background:var(--glass2)}
 .pn{font-weight:600;font-size:16px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pc{font-size:12px;color:var(--dim)}
-.pdel{background:var(--card);border-radius:16px;padding:0 16px;font-size:17px;min-width:56px}
+.pdel{border-radius:18px;padding:0 16px;font-size:17px;min-width:56px;transition:background .2s}
 .pdel.armed{background:var(--red);color:#fff;font-size:13px}
-.hrow{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid rgba(128,128,140,.15)}
+.hrow{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--gb)}
 .hrow:first-of-type{border-top:0}
-.sw{-webkit-appearance:none;appearance:none;width:46px;height:28px;border-radius:14px;background:var(--track);position:relative;margin:0;transition:background .15s;flex-shrink:0}
-.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .15s}
-.sw:checked{background:var(--accent)}.sw:checked::after{transform:translateX(18px)}
+.sw{-webkit-appearance:none;appearance:none;width:48px;height:29px;border-radius:15px;background:var(--track);position:relative;margin:0;transition:background .2s;flex-shrink:0}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;transition:transform .2s cubic-bezier(.3,1.4,.5,1);box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.sw:checked{background:var(--accent)}.sw:checked::after{transform:translateX(19px)}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
+.chip{border-radius:14px;padding:8px 13px;font-size:13px;transition:transform .12s,background .2s,color .2s}
+.chip:active{transform:scale(.94)}
+.chip.on{background:var(--accent);color:var(--ink);border-color:transparent;font-weight:600}
+.sw-accent{width:34px;height:34px;padding:0;border-radius:50%;border:2px solid var(--gb);position:relative}
+.sw-accent.on{border-color:var(--text);transform:scale(1.1)}
+.vrow{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--gb);font-size:14px}
+.vrow:first-of-type{border-top:0}
+.vrow span:first-child{color:var(--dim)}
+.vrow span:last-child{font-variant-numeric:tabular-nums;text-align:right}
 .code{font-size:38px;font-weight:700;letter-spacing:6px;text-align:center;font-variant-numeric:tabular-nums;margin:6px 0}
+#qrimg{display:block;margin:6px auto;width:200px;max-width:70%;image-rendering:pixelated;border-radius:12px;background:#fff;padding:6px}
 .empty{color:var(--dim);text-align:center;padding:26px 8px;font-size:14px;line-height:1.5}
-#toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#2b2e37;color:#eceef3;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%;text-align:center;z-index:5}
-#toast.show{opacity:1}
+#toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,10px);background:var(--solid);color:var(--text);border:1px solid var(--gb);padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;max-width:90%;text-align:center;z-index:9;box-shadow:var(--shadow)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
 #login{display:none;max-width:420px;margin:0 auto;padding:max(48px,env(safe-area-inset-top)) 20px 20px;text-align:center}
-#login img{width:96px;height:96px;border-radius:22px;margin-bottom:12px}
+#login img.logo{width:100px;height:100px;border-radius:24px;margin-bottom:14px;box-shadow:var(--shadow);animation:float 4s ease-in-out infinite}
+@keyframes float{50%{transform:translateY(-6px)}}
 #login h2{margin:0 0 6px}
 #login p{color:var(--dim);font-size:14px;line-height:1.45;margin:0 0 16px}
-#login .field{text-align:center;font-size:24px;letter-spacing:4px}
+#login .field.code-in{text-align:center;font-size:24px;letter-spacing:4px}
 #lerr{color:#ff8a80;font-size:13px;min-height:18px;margin:8px 0}
-.link{color:var(--accent);font-size:14px;margin-top:10px}
+.link{color:var(--accent);font-size:14px;margin-top:10px;padding:6px}
+.scan{position:fixed;inset:0;z-index:20;background:#000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px}
+.scan video{width:100%;max-width:420px;border-radius:24px;background:#111;aspect-ratio:1;object-fit:cover}
+.scan p{color:#ddd;margin:0;font-size:14px}
+.scan .btn{max-width:420px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
+<div class="bg"><i></i><i></i><i></i></div>
 
 <div id="login">
-  <img src="icon-192.png" alt="">
+  <img class="logo" src="icon-192.png" alt="">
   <h2>Микшер громкости</h2>
   <div id="codebox">
-    <p>На компьютере откройте программу Микшер → вкладка «Ещё» → «Подключить телефон» и введите показанный код.</p>
-    <input class="field" id="code" inputmode="numeric" maxlength="7" placeholder="000 000" autocomplete="off">
-    <button class="btn" id="claim">Подключить</button>
+    <p>На компьютере: значок Микшера в трее → «Подключить телефон». Отсканируйте QR-код или введите цифры.</p>
+    <button class="btn" id="scanbtn">📷 Сканировать QR-код</button>
+    <p style="margin:14px 0 8px">или введите код с экрана</p>
+    <input class="field code-in" id="code" inputmode="numeric" maxlength="7" placeholder="000 000" autocomplete="off">
+    <button class="btn alt" id="claim">Подключить</button>
     <button class="link" id="manual">У меня есть ключ доступа</button>
   </div>
   <div id="keybox" style="display:none">
     <p>Введите ключ доступа вручную.</p>
-    <input class="field" id="keyin" type="password" autocomplete="off" style="font-size:16px;letter-spacing:0">
+    <input class="field" id="keyin" type="password" autocomplete="off">
     <button class="btn" id="keybtn">Войти</button>
     <button class="link" id="tocode">Подключить по коду</button>
   </div>
   <div id="lerr"></div>
 </div>
+
+<div class="scan" id="scan"><video id="vid" playsinline muted></video><p>Наведите камеру на QR-код на экране компьютера</p><button class="btn alt" id="scanx">Отмена</button></div>
 
 <div id="app" style="display:none">
   <header><h1 id="title">Микшер</h1><div id="status"><i></i><span>Подключаюсь…</span></div></header>
@@ -106,22 +185,35 @@ input[type=range]::-moz-range-thumb{width:27px;height:27px;border:0;border-radiu
       <button data-m="playpause" aria-label="Пауза / играть">⏯</button>
       <button data-m="next" aria-label="Следующий">⏭</button>
     </div>
+    <div class="out" id="outCard"><label for="outsel">🔈 Вывод звука на компьютере</label><select id="outsel"></select></div>
     <div id="list"></div>
   </section>
 
   <section id="tab-pre">
     <div class="card">
       <h3>Сохранить текущие уровни</h3>
-      <input class="field" id="pname" maxlength="30" placeholder="Например: Игра, Чат, Тишина" style="margin-bottom:10px">
+      <input class="field" id="pname" maxlength="30" placeholder="Например: Игра, Чат, Тишина">
       <button class="btn" id="psave">Сохранить пресет</button>
     </div>
     <div id="plist"></div>
+
+    <div class="card" id="schedCard">
+      <h3>🕒 Пресеты по времени</h3>
+      <p>В выбранное время сам применится пресет. Работает, пока программа на ПК запущена и на связи.</p>
+      <input class="field" id="stime" type="time" value="22:00">
+      <div class="chips" id="sdays"></div>
+      <select class="field" id="spreset"></select>
+      <button class="btn" id="sadd">Добавить правило</button>
+      <p id="stz" style="margin:10px 0 0;font-size:12px"></p>
+      <div id="slist" style="margin-top:10px"></div>
+    </div>
+
     <div class="card" id="autoCard">
       <h3>⚡ Автопресеты</h3>
       <p>Когда приложение запустится на ПК (появится в микшере), сам применится выбранный пресет.</p>
-      <input class="field" id="aapp" list="aapps" placeholder="Приложение, например r5apex_dx12.exe" autocomplete="off" style="margin-bottom:10px">
+      <input class="field" id="aapp" list="aapps" placeholder="Приложение, например r5apex_dx12.exe" autocomplete="off">
       <datalist id="aapps"></datalist>
-      <select class="field" id="apreset" style="margin-bottom:10px"></select>
+      <select class="field" id="apreset"></select>
       <button class="btn" id="aadd">Добавить правило</button>
       <div id="alist" style="margin-top:12px"></div>
     </div>
@@ -130,9 +222,16 @@ input[type=range]::-moz-range-thumb{width:27px;height:27px;border:0;border-radiu
   <section id="tab-more">
     <div class="card" id="pairCard" style="display:none">
       <h3>📱 Подключить телефон</h3>
-      <p>Нажмите кнопку и введите код на телефоне в приложении. Код действует 5 минут.</p>
+      <p>Нажмите кнопку и отсканируйте QR-код в приложении или введите цифры. Код действует 5 минут.</p>
+      <img id="qrimg" alt="" style="display:none">
       <div class="code" id="paircode"></div>
       <button class="btn" id="pairbtn">Показать код</button>
+    </div>
+    <div class="card">
+      <h3>🎨 Оформление</h3>
+      <div class="chips" id="themes"></div>
+      <div class="chips" id="accents"></div>
+      <label class="hrow" style="border:0;padding-bottom:0"><span>Лёгкий режим <span style="color:var(--dim);font-size:12px">(без размытия и анимаций)</span></span><input type="checkbox" class="sw" id="lite"></label>
     </div>
     <div class="card" id="installCard" style="display:none">
       <h3>Установить как приложение</h3>
@@ -144,6 +243,12 @@ input[type=range]::-moz-range-thumb{width:27px;height:27px;border:0;border-radiu
       <p>Выключенные скрываются в микшере только на этом устройстве.</p>
       <div id="hlist"></div>
       <button class="btn alt" id="showall" style="margin-top:10px">Показать все</button>
+    </div>
+    <div class="card">
+      <h3>ℹ️ Версии</h3>
+      <div id="vlist"></div>
+      <button class="btn alt" id="updbtn" style="margin-top:10px;display:none">Проверить обновления</button>
+      <button class="btn alt" id="reloadbtn" style="margin-top:10px;display:none">Перезагрузить страницу</button>
     </div>
     <div class="card">
       <button class="btn danger" id="logout">Отвязать это устройство</button>
@@ -160,48 +265,112 @@ input[type=range]::-moz-range-thumb{width:27px;height:27px;border:0;border-radiu
 
 <script src="app-config.js"></script>
 <script>
+const UI_VERSION = '2.0';                      // версия интерфейса (страница / внутри приложения)
 const API = (window.MIXER_API || '') + '/mixer.php';
 const IN_APP = !!window.MIXER_APP;
+const NATIVE = window.Android || null;         // мост к Android-приложению (сканер QR, версия, проверка обновлений)
 const $ = id => document.getElementById(id);
 const DESKTOP = new URLSearchParams(location.search).has('desktop');
-let key = '';
-try { key = localStorage.getItem('mx_key') || ''; } catch (e) {}
+const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } })();
+const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+let key = lsGet('mx_key', '');
+let pendingPair = '';
 if (location.hash.length > 1) {
-  key = decodeURIComponent(location.hash.slice(1));
-  try { localStorage.setItem('mx_key', key); } catch (e) {}
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (/^pair=\d{6}$/.test(h)) pendingPair = h.slice(5);       // ссылка из QR-кода: подключаемся сами
+  else { key = h; lsSet('mx_key', key); }                     // окно на ПК передаёт ключ через #
   history.replaceState(null, '', location.pathname + location.search);
 }
 let hidden = new Set();
-try { hidden = new Set(JSON.parse(localStorage.getItem('mx_hidden') || '[]')); } catch (e) {}
-function saveHidden() { try { localStorage.setItem('mx_hidden', JSON.stringify([...hidden])); } catch (e) {} }
+try { hidden = new Set(JSON.parse(lsGet('mx_hidden', '[]'))); } catch (e) {}
+function saveHidden() { lsSet('mx_hidden', JSON.stringify([...hidden])); }
 
 const rows = {}, iconCache = {}, iconAsked = {};
 let dragging = false, presetNames = [], presetSig = '', hiddenSig = '', lastApps = [], tab = 'mix';
+let lastState = null, outTouched = 0;
 
-function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1800); }
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1900); }
 function buzz() { try { navigator.vibrate && navigator.vibrate(12); } catch (e) {} }
 function setStatus(on, text) { $('status').className = on ? '' : 'off'; $('status').querySelector('span').textContent = text; }
 
-/* ---------- вход ---------- */
+/* ---------- оформление ---------- */
+const THEMES = [['auto', 'Авто'], ['dark', 'Ночь'], ['light', 'День'], ['aurora', 'Аврора'], ['sunset', 'Закат']];
+const ACCENTS = [['theme', null, null], ['blue', '#4da3ff', '#04121f'], ['violet', '#a78bfa', '#14072e'], ['green', '#3ddc84', '#04170c'], ['orange', '#ff9f43', '#2a1300'], ['pink', '#ff6fae', '#2b0615']];
+function applyTheme() {
+  let t = lsGet('mx_theme', 'auto');
+  if (t === 'auto') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+  const ac = ACCENTS.find(a => a[0] === lsGet('mx_accent', 'theme'));
+  const st = document.documentElement.style;
+  if (ac && ac[1]) { st.setProperty('--accent', ac[1]); st.setProperty('--ink', ac[2]); } else { st.removeProperty('--accent'); st.removeProperty('--ink'); }
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name=theme-color]').content = bg;
+  document.querySelectorAll('#themes .chip').forEach(c => c.classList.toggle('on', c.dataset.v === lsGet('mx_theme', 'auto')));
+  document.querySelectorAll('#accents .sw-accent').forEach(c => c.classList.toggle('on', c.dataset.v === lsGet('mx_accent', 'theme')));
+}
+function initAppearance() {
+  const tb = $('themes');
+  THEMES.forEach(([v, n]) => { const b = document.createElement('button'); b.className = 'chip'; b.dataset.v = v; b.textContent = n; b.onclick = () => { buzz(); lsSet('mx_theme', v); applyTheme(); }; tb.appendChild(b); });
+  const ab = $('accents');
+  ACCENTS.forEach(([v, c]) => {
+    const b = document.createElement('button'); b.className = 'sw-accent'; b.dataset.v = v; b.setAttribute('aria-label', 'Акцент ' + v);
+    b.style.background = c || 'conic-gradient(#4da3ff,#a78bfa,#ff6fae,#ff9f43,#3ddc84,#4da3ff)';
+    b.onclick = () => { buzz(); lsSet('mx_accent', v); applyTheme(); };
+    ab.appendChild(b);
+  });
+  $('lite').checked = lsGet('mx_fx', '') === 'lite';
+  $('lite').onchange = () => { lsSet('mx_fx', $('lite').checked ? 'lite' : 'full'); if ($('lite').checked) document.documentElement.dataset.fx = 'lite'; else delete document.documentElement.dataset.fx; };
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (lsGet('mx_theme', 'auto') === 'auto') applyTheme(); });
+  applyTheme();
+}
+
+/* ---------- вход: код, QR, ключ ---------- */
 function showLogin() { $('login').style.display = 'block'; $('app').style.display = 'none'; }
 function enter() { $('login').style.display = 'none'; $('app').style.display = 'block'; show(tab); refresh(true); }
-$('claim').onclick = async () => {
-  const code = $('code').value.replace(/\D/g, ''); $('lerr').textContent = '';
-  if (code.length < 6) { $('lerr').textContent = 'Введите 6 цифр'; return; }
+async function claim(code) {
+  $('lerr').textContent = '';
+  if (code.length !== 6) { $('lerr').textContent = 'Введите 6 цифр'; return false; }
   try {
     const r = await fetch(API + '?a=pair_claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
     const d = await r.json();
-    if (d.key) { key = d.key; try { localStorage.setItem('mx_key', key); } catch (e) {} enter(); }
-    else $('lerr').textContent = r.status === 429 ? 'Слишком много попыток. Подождите 10 минут' : 'Неверный или просроченный код';
+    if (d.key) { key = d.key; lsSet('mx_key', key); enter(); return true; }
+    $('lerr').textContent = r.status === 429 ? 'Слишком много попыток. Подождите 10 минут' : 'Неверный или просроченный код';
   } catch (e) { $('lerr').textContent = 'Нет связи с сайтом'; }
+  return false;
+}
+function pairFromText(text) {                    // из QR: ссылка с #pair=123456 или просто шесть цифр
+  const m = String(text).match(/pair=(\d{6})/) || String(text).match(/^\s*(\d{3})\s?(\d{3})\s*$/);
+  return m ? (m[2] ? m[1] + m[2] : m[1]) : '';
+}
+window.onQrResult = text => {                    // сюда приходит результат из Android-сканера
+  const c = pairFromText(text);
+  if (c) claim(c); else { showLogin(); $('lerr').textContent = 'Это не QR-код Микшера'; }
 };
+let scanStream = null, scanTimer = null;
+function stopScan() { clearInterval(scanTimer); if (scanStream) scanStream.getTracks().forEach(t => t.stop()); scanStream = null; $('scan').style.display = 'none'; }
+async function startScan() {
+  if (NATIVE && NATIVE.scanQr) { NATIVE.scanQr(); return; }
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices) {
+    toast('Откройте камеру телефона и наведите на QR — страница подключится сама'); return;
+  }
+  try {
+    const det = new BarcodeDetector({ formats: ['qr_code'] });
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const v = $('vid'); v.srcObject = scanStream; await v.play(); $('scan').style.display = 'flex';
+    scanTimer = setInterval(async () => {
+      try { const r = await det.detect(v); if (r.length) { const c = pairFromText(r[0].rawValue); if (c) { stopScan(); claim(c); } } } catch (e) {}
+    }, 250);
+  } catch (e) { stopScan(); toast('Нет доступа к камере'); }
+}
+$('scanbtn').onclick = startScan;
+$('scanx').onclick = stopScan;
+$('claim').onclick = () => claim($('code').value.replace(/\D/g, ''));
+$('code').oninput = () => { const d = $('code').value.replace(/\D/g, '').slice(0, 6); $('code').value = d.length > 3 ? d.slice(0, 3) + ' ' + d.slice(3) : d; };
 $('manual').onclick = () => { $('codebox').style.display = 'none'; $('keybox').style.display = 'block'; };
 $('tocode').onclick = () => { $('keybox').style.display = 'none'; $('codebox').style.display = 'block'; };
-$('keybtn').onclick = () => {
-  key = $('keyin').value.trim(); if (!key) return;
-  try { localStorage.setItem('mx_key', key); } catch (e) {}
-  enter();
-};
+$('keybtn').onclick = () => { key = $('keyin').value.trim(); if (!key) return; lsSet('mx_key', key); enter(); };
 $('logout').onclick = () => { api('unpair', {}).catch(() => {}); try { localStorage.removeItem('mx_key'); } catch (e) {} key = ''; showLogin(); };
 
 async function api(action, body) {
@@ -209,7 +378,7 @@ async function api(action, body) {
     method: body ? 'POST' : 'GET',
     headers: { 'X-Key': key, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
-    cache: 'no-store'
+    cache: 'no-store', keepalive: false
   });
   if (r.status === 403) { try { localStorage.removeItem('mx_key'); } catch (e) {} key = ''; showLogin(); throw new Error('forbidden'); }
   return r.json();
@@ -219,7 +388,7 @@ async function api(action, body) {
 const TITLES = { mix: 'Микшер', pre: 'Пресеты', more: 'Ещё' };
 function show(t) {
   tab = t;
-  ['mix', 'pre', 'more'].forEach(n => { $('tab-' + n).style.display = n === t ? 'block' : 'none'; $('nav-' + n).classList.toggle('on', n === t); });
+  ['mix', 'pre', 'more'].forEach(n => { $('tab-' + n).classList.toggle('show', n === t); $('nav-' + n).classList.toggle('on', n === t); });
   $('title').textContent = TITLES[t];
   window.scrollTo(0, 0);
 }
@@ -263,17 +432,57 @@ $('psave').onclick = () => {
     $('pname').value = ''; toast('Сохранено: ' + n); refresh(true);
   }).catch(() => {});
 };
+function fillPresetSelect(sel) {
+  const cur = sel.value, psig = presetNames.join('\u0001');
+  if (sel.dataset.sig === psig) return;
+  sel.dataset.sig = psig; sel.innerHTML = '';
+  presetNames.forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = 'Пресет: ' + n; sel.appendChild(o); });
+  if (presetNames.includes(cur)) sel.value = cur;
+}
+
+/* ---------- пресеты по времени ---------- */
+const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const pickedDays = new Set();
+(function initDays() {
+  DAYS.forEach((n, i) => {
+    const b = document.createElement('button'); b.className = 'chip'; b.textContent = n;
+    b.onclick = () => { buzz(); if (pickedDays.has(i + 1)) pickedDays.delete(i + 1); else pickedDays.add(i + 1); b.classList.toggle('on', pickedDays.has(i + 1)); };
+    $('sdays').appendChild(b);
+  });
+})();
+let schedSig = '';
+function renderSchedules(list, tz) {
+  fillPresetSelect($('spreset'));
+  $('stz').textContent = 'Дни не выбраны — правило работает каждый день. Часовой пояс: ' + (tz || '—');
+  const sig = JSON.stringify(list);
+  if (sig === schedSig) return;
+  schedSig = sig;
+  const box = $('slist'); box.innerHTML = '';
+  list.forEach(r => {
+    const c = document.createElement('div'); c.className = 'pcard';
+    const main = document.createElement('div'); main.className = 'pmain';
+    main.innerHTML = '<span class="pn"></span><span class="pc"></span>';
+    main.querySelector('.pn').textContent = r.time + ' · ' + (r.days.length ? r.days.map(d => DAYS[d - 1]).join(' ') : 'каждый день');
+    main.querySelector('.pc').textContent = '→ пресет «' + r.preset + '»';
+    const del = document.createElement('button'); del.className = 'pdel'; del.textContent = '🗑';
+    del.onclick = () => api('sched_delete', { id: r.id }).then(() => { toast('Правило удалено'); refresh(true); }).catch(() => {});
+    c.append(main, del); box.appendChild(c);
+  });
+}
+$('sadd').onclick = () => {
+  const time = $('stime').value, name = $('spreset').value;
+  if (!time) { toast('Укажите время'); return; }
+  if (!name) { toast('Сначала сохраните пресет'); return; }
+  api('sched_save', { time, name, days: [...pickedDays], tz: TZ }).then(d => {
+    if (d.error) { toast(d.error === 'too many' ? 'Максимум 20 правил' : 'Не удалось сохранить'); return; }
+    toast('Правило добавлено'); refresh(true);
+  }).catch(() => {});
+};
 
 /* ---------- автопресеты ---------- */
 let autosSig = '';
 function renderAutos(autos) {
-  const sel = $('apreset'), cur = sel.value;
-  const psig = presetNames.join('\u0001');
-  if (sel.dataset.sig !== psig) {
-    sel.dataset.sig = psig; sel.innerHTML = '';
-    presetNames.forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = 'Пресет: ' + n; sel.appendChild(o); });
-    if (presetNames.includes(cur)) sel.value = cur;
-  }
+  fillPresetSelect($('apreset'));
   const dl = $('aapps'), names = lastApps.filter(a => a.name !== '__master__').map(a => a.name);
   const dsig = names.join('\u0001');
   if (dl.dataset.sig !== dsig) { dl.dataset.sig = dsig; dl.innerHTML = names.map(n => '<option value="' + n.replace(/"/g, '&quot;') + '">').join(''); }
@@ -302,6 +511,21 @@ $('aadd').onclick = () => {
   }).catch(() => {});
 };
 
+/* ---------- устройство вывода ---------- */
+let devSig = '';
+function renderDevices(devs) {
+  const card = $('outCard');
+  card.style.display = devs.length > 1 ? 'block' : 'none';     // с одним устройством выбирать нечего
+  const sel = $('outsel'), sig = JSON.stringify(devs);
+  if (sig === devSig || Date.now() - outTouched < 3000) return;
+  devSig = sig; sel.innerHTML = '';
+  devs.forEach(d => { const o = document.createElement('option'); o.value = d.id; o.textContent = d.name; if (d.default) o.selected = true; sel.appendChild(o); });
+}
+$('outsel').onchange = () => {
+  outTouched = Date.now(); buzz();
+  api('set', { device: $('outsel').value }).then(d => toast(d.error ? 'Не удалось переключить' : 'Звук переключён')).catch(() => {});
+};
+
 /* ---------- приложения ---------- */
 function setIcon(name) {
   const o = rows[name]; if (!o || !iconCache[name]) return;
@@ -321,6 +545,7 @@ function fill(s) { s.style.setProperty('--p', s.value + '%'); }
 
 function build(a) {
   const r = document.createElement('div'); r.className = 'row' + (a.name === '__master__' ? ' master' : '');
+  r.style.setProperty('--i', Math.min(Object.keys(rows).length, 8));
   r.innerHTML = '<div class="top"><div class="ico"></div><span class="name"></span><span class="val"></span><button class="mute">🔊</button></div><input type="range" min="0" max="100">';
   const ico = r.querySelector('.ico'), s = r.querySelector('input'), b = r.querySelector('.mute'), v = r.querySelector('.val');
   r.querySelector('.name').textContent = a.title;
@@ -369,14 +594,41 @@ function renderHidden(apps) {
 }
 $('showall').onclick = () => { hidden.clear(); saveHidden(); refresh(true); toast('Показаны все приложения'); };
 
-if (DESKTOP) $('pairCard').style.display = 'block';
+/* версии: чтобы было видно, обновилось ли приложение, программа на ПК и сервер */
+function ownVersion() {
+  if (NATIVE && NATIVE.getVersion) { try { return ['Приложение на телефоне', String(NATIVE.getVersion())]; } catch (e) {} }
+  return [IN_APP ? 'Интерфейс приложения' : 'Страница микшера', 'интерфейс ' + UI_VERSION];
+}
+let verSig = '';
+function renderVersions(d) {
+  const own = ownVersion();
+  const pc = d && d.pc_ver ? '1.' + d.pc_ver : (d && d.online ? 'локальная сборка' : 'нет данных');
+  const items = [own, ['Программа на ПК', pc], ['Сервер', d && d.server_ver ? 'v' + d.server_ver : '—']];
+  const sig = JSON.stringify(items);
+  if (sig === verSig) return;
+  verSig = sig;
+  $('vlist').innerHTML = '';
+  items.forEach(([k, v]) => { const r = document.createElement('div'); r.className = 'vrow'; r.innerHTML = '<span></span><span></span>'; r.children[0].textContent = k; r.children[1].textContent = v; $('vlist').appendChild(r); });
+}
+if (NATIVE && NATIVE.checkUpdate) { $('updbtn').style.display = 'block'; $('updbtn').onclick = () => { toast('Проверяю обновления…'); NATIVE.checkUpdate(); }; }
+else if (!IN_APP) { $('reloadbtn').style.display = 'block'; $('reloadbtn').onclick = () => location.reload(); }
+
+/* подключение телефона из окна на ПК */
+if (DESKTOP) {
+  $('pairCard').style.display = 'block';
+  const s = document.createElement('script'); s.src = 'qrcode.js'; document.head.appendChild(s);
+}
 let pairTimer = null;
 $('pairbtn').onclick = () => {
   api('pair_new', {}).then(d => {
     const c = String(d.code); $('paircode').textContent = c.slice(0, 3) + ' ' + c.slice(3);
+    try {
+      const q = qrcode(0, 'M'); q.addData(location.origin + '/mixer/#pair=' + c); q.make();
+      $('qrimg').src = q.createDataURL(6, 2); $('qrimg').style.display = 'block';
+    } catch (e) { $('qrimg').style.display = 'none'; }
     let left = d.ttl || 300; $('pairbtn').textContent = 'Новый код';
     clearInterval(pairTimer);
-    pairTimer = setInterval(() => { left--; if (left <= 0) { clearInterval(pairTimer); $('paircode').textContent = ''; } }, 1000);
+    pairTimer = setInterval(() => { left--; if (left <= 0) { clearInterval(pairTimer); $('paircode').textContent = ''; $('qrimg').style.display = 'none'; } }, 1000);
   }).catch(() => toast('Не удалось получить код'));
 };
 
@@ -399,10 +651,12 @@ async function refresh(force) {
   if (dragging || (document.hidden && !force)) return;
   try {
     const d = await api('state');
+    lastState = d;
     $('login').style.display = 'none'; $('app').style.display = 'block';
     setStatus(d.online, d.online ? 'ПК на связи' : 'ПК не в сети');
     presetNames = d.presets || []; renderPresets(d.preset_counts || {});
     lastApps = d.apps; renderHidden(d.apps); renderAutos(d.autos || []);
+    renderSchedules(d.schedules || [], d.tz); renderDevices(d.devices || []); renderVersions(d);
     const vis = d.apps.filter(a => a.name === '__master__' || !hidden.has(a.name));
     const names = {}; vis.forEach(a => { names[a.name] = 1; });
     Object.keys(rows).forEach(n => { if (!names[n]) { rows[n].r.remove(); delete rows[n]; } });
@@ -414,7 +668,11 @@ async function refresh(force) {
   } catch (e) { if (key) setStatus(false, 'Нет связи с сайтом'); }
 }
 if ('serviceWorker' in navigator && !IN_APP) { navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {}); }
-if (key) enter(); else showLogin();
-setInterval(refresh, 2000);
+
+initAppearance();
+renderVersions(null);
+if (pendingPair) { showLogin(); claim(pendingPair); }
+else if (key) enter(); else showLogin();
+setInterval(refresh, 1500);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(true); });
 </script></body></html>
