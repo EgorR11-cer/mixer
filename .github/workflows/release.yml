@@ -25,7 +25,13 @@ jobs:
         run: |
           N=$((100 + ${{ github.run_number }}))
           chmod +x gradlew
-          ./gradlew assembleRelease -PVERSION_CODE=$N -PVERSION_NAME=1.$N
+          # Gradle качается с services.gradle.org; если сеть на сервере GitHub подвисла, пробуем ещё раз
+          ok=0
+          for i in 1 2 3; do
+            if ./gradlew assembleRelease -PVERSION_CODE=$N -PVERSION_NAME=1.$N; then ok=1; break; fi
+            echo "Попытка $i не удалась, жду и повторяю"; sleep 20
+          done
+          [ "$ok" = 1 ]
           cp app/build/outputs/apk/release/app-release.apk ../Mixer.apk
         working-directory: android
       - uses: actions/upload-artifact@v4
