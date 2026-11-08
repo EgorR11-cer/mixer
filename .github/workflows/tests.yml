@@ -1,0 +1,20 @@
+name: Tests
+# Автопроверка на каждый коммит: настоящий mixer.php + агент на фейковом звуке + синтаксис интерфейса.
+on:
+  push:
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: PHP
+        run: sudo apt-get update && sudo apt-get install -y php-cli php-mbstring
+      - run: php -l server/mixer.php
+      - name: Интерфейс (скрипт страницы и manifest)
+        run: python windows/tests/check_ui.py
+      - name: Сквозной тест
+        run: python windows/tests/test_e2e.py

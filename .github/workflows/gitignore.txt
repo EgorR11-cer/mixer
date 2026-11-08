@@ -1,0 +1,20 @@
+# секреты и подпись
+*.keystore
+keystore.properties
+local.properties
+# данные сервера (ключ, токены, состояние) — не должны попадать в репозиторий
+data/
+# сборки
+windows/build/
+windows/dist/
+*.spec
+android/build/
+android/app/build/
+android/.gradle/
+.gradle/
+android/app/src/main/assets/
+# прочее
+__pycache__/
+*.pyc
+.idea/
+.vscode/

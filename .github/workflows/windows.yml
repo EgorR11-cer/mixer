@@ -11,7 +11,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt
         working-directory: windows
-      - run: python -m PyInstaller --noconfirm --onefile --windowed --name Mixer --hidden-import win32timezone --collect-submodules webview mixer_agent.py
+      - run: python -m PyInstaller --noconfirm --onefile --windowed --name Mixer --hidden-import win32timezone --hidden-import app_version --hidden-import updater --collect-submodules webview mixer_agent.py
         working-directory: windows
       - uses: actions/upload-artifact@v4
         with:
