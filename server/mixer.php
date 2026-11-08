@@ -28,7 +28,8 @@ define('MX_FILE', MX_DIR . '/mixer.json');
 define('MX_ICONS', MX_DIR . '/mixer_icons.json');
 define('MX_TOKENS', MX_DIR . '/mixer_tokens.json');
 define('MX_PAIR', MX_DIR . '/mixer_pair.json');
-const MX_VERSION = '2.0';
+const MX_VERSION = '2.1';
+const MX_TOKEN_TTL = 180 * 86400;   // токен, которым не пользовались полгода, перестаёт работать (активные обновляются сами)
 const MX_DEF = ['apps' => [], 'ts' => 0, 'cmds' => [], 'presets' => [], 'icon_names' => [], 'autos' => [],
                 'devices' => [], 'schedules' => [], 'tz' => 'Europe/Moscow', 'pc_ver' => 0];
 const MX_POLL_US = 40000;           // как часто сервер заглядывает в очередь команд, пока ждёт (было 150 мс)
@@ -81,6 +82,11 @@ function mx_auth(?string &$tokenHash = null): ?string {
     $h = hash('sha256', $key);
     [$f, $t] = mx_open(MX_TOKENS, ['devices' => []]);
     $found = isset($t['devices'][$h]);
+    if ($found && ($t['devices'][$h]['seen'] ?? 0) < time() - MX_TOKEN_TTL) {   // протух — удаляем и не пускаем
+        unset($t['devices'][$h]);
+        mx_close($f, $t);
+        return null;
+    }
     if ($found && ($t['devices'][$h]['seen'] ?? 0) < time() - 3600) {   // раз в час отмечаем «последний вход»
         $t['devices'][$h]['seen'] = time();
         mx_close($f, $t);
@@ -89,6 +95,19 @@ function mx_auth(?string &$tokenHash = null): ?string {
     }
     if ($found) { $tokenHash = $h; return 'device'; }
     return null;
+}
+// Понятное имя устройства из User-Agent: «Pixel 7», «iPhone», «Windows»; для приложения Android добавляем «(приложение)»
+function mx_device_name(string $ua): string {
+    $app = stripos($ua, '; wv)') !== false;
+    if (preg_match('/Android [\d.]+; ([^;)]+?)(?: Build|[;)])/', $ua, $m) && mb_strlen(trim($m[1])) >= 3) $n = trim($m[1]);
+    elseif (stripos($ua, 'Android') !== false) $n = 'Android';
+    elseif (stripos($ua, 'iPhone') !== false) $n = 'iPhone';
+    elseif (stripos($ua, 'iPad') !== false) $n = 'iPad';
+    elseif (stripos($ua, 'Windows') !== false) $n = 'Windows';
+    elseif (stripos($ua, 'Macintosh') !== false) $n = 'Mac';
+    elseif (stripos($ua, 'Linux') !== false) $n = 'Linux';
+    else $n = 'Устройство';
+    return $n . ($app ? ' (приложение)' : '');
 }
 function mx_deny(): void { mx_out(['error' => 'forbidden'], 403); }
 function mx_ip(): string { return (string)($_SERVER['REMOTE_ADDR'] ?? '0'); }
@@ -277,6 +296,35 @@ if ($a === 'unpair') {
         mx_close($f, $t);
     }
     mx_out(['ok' => true]);
+}
+
+// ---- Подключённые устройства: список и отключение (потерялся телефон) ----
+if ($a === 'dev_list') {
+    [$f, $t] = mx_open(MX_TOKENS, ['devices' => []]);
+    mx_close($f);
+    $out = [];
+    foreach ($t['devices'] as $h => $d) {
+        $out[] = ['id' => substr((string)$h, 0, 12), 'name' => mx_device_name((string)($d['ua'] ?? '')),
+                  'created' => (int)($d['created'] ?? 0), 'seen' => (int)($d['seen'] ?? 0),
+                  'current' => $tokHash !== null && (string)$h === $tokHash];
+    }
+    usort($out, fn($x, $y) => ($y['current'] <=> $x['current']) ?: ($y['seen'] <=> $x['seen']));
+    mx_out(['devices' => $out]);
+}
+if ($a === 'dev_revoke') {
+    $in = mx_in();
+    $id = (string)($in['id'] ?? '');
+    $others = !empty($in['others']);                  // «отключить все остальные» (с ПК — вообще все)
+    if (!$others && strlen($id) < 8) mx_out(['error' => 'bad id'], 400);
+    [$f, $t] = mx_open(MX_TOKENS, ['devices' => []]);
+    $removed = 0;
+    foreach (array_keys($t['devices']) as $h) {
+        $h = (string)$h;
+        $hit = $others ? ($h !== $tokHash) : (strncmp($h, $id, strlen($id)) === 0);
+        if ($hit) { unset($t['devices'][$h]); $removed++; }
+    }
+    mx_close($f, $t);
+    mx_out(['ok' => true, 'removed' => $removed]);
 }
 
 // ---- Телефон: состояние ----

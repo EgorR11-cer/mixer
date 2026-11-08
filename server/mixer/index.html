@@ -119,6 +119,13 @@ button.pmain:active{transform:scale(.98);background:var(--glass2)}
 .pdel.armed{background:var(--red);color:#fff;font-size:13px}
 .hrow{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--gb)}
 .hrow:first-of-type{border-top:0}
+.dev{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--gb)}
+.dev:first-child{border-top:0}
+.dev b{display:block;font-weight:600;font-size:15px}
+.dev small{color:var(--dim);font-size:12px}
+.dev .me{color:var(--accent);font-size:11px;font-weight:600;margin-left:6px}
+.mini{border-radius:12px;padding:8px 12px;font-size:13px;background:var(--glass);border:1px solid var(--gb);color:inherit;flex-shrink:0}
+.mini.armed{background:var(--red);color:#fff;border-color:transparent}
 .sw{-webkit-appearance:none;appearance:none;width:48px;height:29px;border-radius:15px;background:var(--track);position:relative;margin:0;transition:background .2s;flex-shrink:0}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;transition:transform .2s cubic-bezier(.3,1.4,.5,1);box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .sw:checked{background:var(--accent)}.sw:checked::after{transform:translateX(19px)}
@@ -245,6 +252,12 @@ button.pmain:active{transform:scale(.98);background:var(--glass2)}
       <button class="btn alt" id="showall" style="margin-top:10px">Показать все</button>
     </div>
     <div class="card">
+      <h3>🔐 Подключённые устройства</h3>
+      <p>Кому разрешено управлять громкостью. Потерялся телефон — отключите его здесь.</p>
+      <div id="devlist"></div>
+      <button class="btn alt" id="devothers" style="margin-top:10px;display:none">Отключить все остальные</button>
+    </div>
+    <div class="card">
       <h3>ℹ️ Версии</h3>
       <div id="vlist"></div>
       <button class="btn alt" id="updbtn" style="margin-top:10px;display:none">Проверить обновления</button>
@@ -265,7 +278,7 @@ button.pmain:active{transform:scale(.98);background:var(--glass2)}
 
 <script src="app-config.js"></script>
 <script>
-const UI_VERSION = '2.0';                      // версия интерфейса (страница / внутри приложения)
+const UI_VERSION = '2.1';                      // версия интерфейса (страница / внутри приложения)
 const API = (window.MIXER_API || '') + '/mixer.php';
 const IN_APP = !!window.MIXER_APP;
 const NATIVE = window.Android || null;         // мост к Android-приложению (сканер QR, версия, проверка обновлений)
@@ -391,6 +404,7 @@ function show(t) {
   ['mix', 'pre', 'more'].forEach(n => { $('tab-' + n).classList.toggle('show', n === t); $('nav-' + n).classList.toggle('on', n === t); });
   $('title').textContent = TITLES[t];
   window.scrollTo(0, 0);
+  if (t === 'more') loadPaired();
 }
 document.querySelectorAll('nav button').forEach(b => { b.onclick = () => { buzz(); show(b.dataset.t); }; });
 document.querySelectorAll('.media button').forEach(b => { b.onclick = () => { buzz(); api('set', { media: b.dataset.m }).catch(() => {}); }; });
@@ -594,6 +608,55 @@ function renderHidden(apps) {
 }
 $('showall').onclick = () => { hidden.clear(); saveHidden(); refresh(true); toast('Показаны все приложения'); };
 
+/* подключённые устройства: список и отключение (в том числе потерянного телефона) */
+let pairedSig = '', lastDevLoad = 0;
+function ago(ts) {
+  if (!ts) return '—';
+  if (Date.now() / 1000 - ts < 2 * 3600) return 'активно недавно';       // «был» обновляется раз в час
+  const d = new Date(ts * 1000), n = new Date();
+  const days = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  if (days <= 0) return 'сегодня';
+  if (days === 1) return 'вчера';
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+}
+function renderPaired(list) {
+  const sig = JSON.stringify(list.map(x => [x.id, x.name, x.current, Math.floor(x.seen / 3600)]));
+  if (sig === pairedSig) return;
+  pairedSig = sig;
+  const box = $('devlist'); box.innerHTML = '';
+  if (!list.length) box.innerHTML = '<div class="empty">Нет подключённых устройств</div>';
+  list.forEach(x => {
+    const r = document.createElement('div'); r.className = 'dev';
+    const t = document.createElement('div');
+    const b = document.createElement('b'); b.textContent = x.name;
+    if (x.current) { const me = document.createElement('span'); me.className = 'me'; me.textContent = 'это устройство'; b.appendChild(me); }
+    const sm = document.createElement('small'); sm.textContent = ago(x.seen);
+    t.append(b, sm); r.appendChild(t);
+    if (!x.current) {
+      const bt = document.createElement('button'); bt.className = 'mini'; bt.textContent = 'Отключить';
+      let armed = false;
+      bt.onclick = () => {
+        if (!armed) { armed = true; bt.classList.add('armed'); bt.textContent = 'Точно?'; setTimeout(() => { armed = false; bt.classList.remove('armed'); bt.textContent = 'Отключить'; }, 2500); return; }
+        api('dev_revoke', { id: x.id }).then(() => { toast('Устройство отключено'); pairedSig = ''; loadPaired(); }).catch(() => {});
+      };
+      r.appendChild(bt);
+    }
+    box.appendChild(r);
+  });
+  $('devothers').style.display = list.filter(x => !x.current).length > 1 ? 'block' : 'none';
+}
+async function loadPaired() {
+  lastDevLoad = Date.now();
+  try { const d = await api('dev_list'); renderPaired(d.devices || []); } catch (e) {}
+}
+let othersArmed = false;
+$('devothers').onclick = () => {
+  const b = $('devothers');
+  if (!othersArmed) { othersArmed = true; b.textContent = 'Нажмите ещё раз, чтобы подтвердить'; setTimeout(() => { othersArmed = false; b.textContent = 'Отключить все остальные'; }, 3000); return; }
+  othersArmed = false; b.textContent = 'Отключить все остальные';
+  api('dev_revoke', { others: true }).then(d => { toast('Отключено устройств: ' + (d.removed || 0)); pairedSig = ''; loadPaired(); }).catch(() => {});
+};
+
 /* версии: чтобы было видно, обновилось ли приложение, программа на ПК и сервер */
 function ownVersion() {
   if (NATIVE && NATIVE.getVersion) { try { return ['Приложение на телефоне', String(NATIVE.getVersion())]; } catch (e) {} }
@@ -657,6 +720,7 @@ async function refresh(force) {
     presetNames = d.presets || []; renderPresets(d.preset_counts || {});
     lastApps = d.apps; renderHidden(d.apps); renderAutos(d.autos || []);
     renderSchedules(d.schedules || [], d.tz); renderDevices(d.devices || []); renderVersions(d);
+    if (tab === 'more' && Date.now() - lastDevLoad > 10000) loadPaired();
     const vis = d.apps.filter(a => a.name === '__master__' || !hidden.has(a.name));
     const names = {}; vis.forEach(a => { names[a.name] = 1; });
     Object.keys(rows).forEach(n => { if (!names[n]) { rows[n].r.remove(); delete rows[n]; } });

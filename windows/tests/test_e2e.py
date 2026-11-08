@@ -169,6 +169,40 @@ def main():
         assert phone("unpair", {}, key=tok)[0] == 200
         assert phone("state", key=tok)[0] == 403, "токен должен быть отозван"
 
+        # --- подключённые устройства: список, отключение, срок жизни токена ---
+        def pair(ua=None):
+            c = phone("pair_new", {})[1]["code"]
+            rq = urllib.request.Request(f"{BASE}/mixer.php?a=pair_claim", method="POST", data=json.dumps({"code": c}).encode(),
+                                        headers={"Content-Type": "application/json", **({"User-Agent": ua} if ua else {})})
+            with urllib.request.urlopen(rq, timeout=10) as r:
+                return json.loads(r.read())["key"]
+        t1 = pair("Mozilla/5.0 (Linux; Android 14; Pixel 7 Build/UP1A.231005.007; wv) AppleWebKit/537.36")
+        t2 = pair("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15")
+        s, r = phone("dev_list", key=t1)
+        assert s == 200 and len(r["devices"]) == 2, r
+        assert r["devices"][0]["current"] is True and r["devices"][0]["name"] == "Pixel 7 (приложение)", r
+        assert [x["name"] for x in r["devices"] if not x["current"]] == ["iPhone"], r
+        assert all(len(x["id"]) == 12 for x in r["devices"])
+        other = [x for x in r["devices"] if not x["current"]][0]
+        assert phone("dev_revoke", {"id": ""}, key=t1)[0] == 400, "пустой id не должен отключать всех"
+        assert phone("dev_revoke", {"id": "ab"}, key=t1)[0] == 400, "короткий id не должен отключать всех"
+        assert phone("dev_revoke", {"id": other["id"]}, key=t1)[1]["removed"] == 1
+        assert phone("state", key=t2)[0] == 403, "отключённое устройство больше не пускают"
+        assert phone("state", key=t1)[0] == 200
+        t3, t4 = pair(), pair()
+        assert phone("dev_revoke", {"others": True}, key=t3)[1]["removed"] == 2          # t1 и t4
+        assert phone("state", key=t3)[0] == 200 and phone("state", key=t1)[0] == 403 and phone("state", key=t4)[0] == 403
+        s, r = phone("dev_list")                                                         # с ПК (мастер-ключ)
+        assert s == 200 and len(r["devices"]) == 1 and r["devices"][0]["current"] is False, r
+        tf = os.path.join(d, "data", "mixer_tokens.json")                                # токен без использования полгода
+        data = json.load(open(tf))
+        for h in data["devices"]:
+            data["devices"][h]["seen"] = int(time.time()) - 181 * 86400
+        json.dump(data, open(tf, "w"))
+        assert phone("state", key=t3)[0] == 403, "просроченный токен не должен работать"
+        assert phone("dev_list")[1]["devices"] == [], "просроченный токен удаляется"
+        assert phone("state")[0] == 200, "мастер-ключ не протухает"
+
         # --- CORS для приложения ---
         req = urllib.request.Request(f"{BASE}/mixer.php?a=state", method="OPTIONS",
                                      headers={"Origin": "https://appassets.androidplatform.net"})
